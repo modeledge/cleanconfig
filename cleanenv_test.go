@@ -2,9 +2,9 @@ package cleanconfig
 
 import (
 	"bytes"
-	"cleanconfig/example/simple_secret"
 	"errors"
 	"fmt"
+	"github.com/modeledge/cleanconfig/example/simple_secret"
 	"io"
 	"io/ioutil"
 	"net/url"

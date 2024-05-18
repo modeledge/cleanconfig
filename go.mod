@@ -1,6 +1,6 @@
 module github.com/modeledge/cleanconfig
 
-go 1.21
+go 1.22.3
 
 require (
 	github.com/BurntSushi/toml v1.3.2
