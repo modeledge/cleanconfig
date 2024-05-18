@@ -1,4 +1,4 @@
-module cleanconfig
+module github.com/modeledge/cleanconfig
 
 go 1.21
 
