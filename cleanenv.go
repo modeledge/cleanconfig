@@ -99,17 +99,47 @@ func ReadConfig(path string, cfg interface{}) error {
 		return err
 	}
 
-	return readEnvVars(cfg, false)
+	return readEnvVars(cfg, false, nil)
+}
+
+// ReadConfigWithSecretManager reads configuration file and parses it depending on tags in structure provided. Accesses
+// secrets from secret manager if field has a secret tag.
+//
+// # Then it reads and parses
+//
+// Example:
+//
+//	type ConfigDatabase struct {
+//		Port     string `yaml:"port" env:"PORT" env-default:"5432"`
+//		Host     string `yaml:"host" env:"HOST" env-default:"localhost"`
+//		Name     string `yaml:"name" env:"NAME" env-default:"postgres"`
+//		User     string `yaml:"user" env:"USER" env-default:"user"`
+//		Password string `yaml:"password" env:"PASSWORD" secret:"PASSWORD"`
+//	}
+//
+//	var cfg ConfigDatabase
+//
+//	err := cleanenv.ReadConfig("config.yml", googleSecrets, &cfg)
+//	if err != nil {
+//	    ...
+//	}
+func ReadConfigWithSecretManager(path string, secretManager SecretManager, cfg interface{}) error {
+	err := parseFile(path, cfg)
+	if err != nil {
+		return err
+	}
+
+	return readEnvVars(cfg, false, secretManager)
 }
 
 // ReadEnv reads environment variables into the structure.
 func ReadEnv(cfg interface{}) error {
-	return readEnvVars(cfg, false)
+	return readEnvVars(cfg, false, nil)
 }
 
 // UpdateEnv rereads (updates) environment variables in the structure.
 func UpdateEnv(cfg interface{}) error {
-	return readEnvVars(cfg, true)
+	return readEnvVars(cfg, true, nil)
 }
 
 // parseFile parses configuration file according to it's extension
@@ -248,6 +278,7 @@ type structMeta struct {
 	description string
 	updatable   bool
 	required    bool
+	secretKey   string
 }
 
 // isFieldValueZero determines if fieldValue empty or not
@@ -381,6 +412,8 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 				}
 			}
 
+			secretKey := fType.Tag.Get("secret")
+
 			metas = append(metas, structMeta{
 				envList:     envList,
 				fieldName:   s.Type().Field(idx).Name,
@@ -391,6 +424,7 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 				description: fType.Tag.Get(TagEnvDescription),
 				updatable:   upd,
 				required:    required,
+				secretKey:   secretKey,
 			})
 		}
 
@@ -400,7 +434,7 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 }
 
 // readEnvVars reads environment variables to the provided configuration structure
-func readEnvVars(cfg interface{}, update bool) error {
+func readEnvVars(cfg interface{}, update bool, secretManager SecretManager) error {
 	metaInfo, err := readStructMetadata(cfg)
 	if err != nil {
 		return err
@@ -420,10 +454,22 @@ func readEnvVars(cfg interface{}, update bool) error {
 
 		var rawValue *string
 
-		for _, env := range meta.envList {
-			if value, ok := os.LookupEnv(env); ok {
-				rawValue = &value
-				break
+		// Check if the secret key is provided
+		if meta.secretKey != "" {
+			if secretManager != nil {
+				secret, err := secretManager.GetSecret(meta.secretKey)
+				if err == nil {
+					rawValue = &secret
+				}
+			}
+		}
+
+		if rawValue == nil {
+			for _, env := range meta.envList {
+				if value, ok := os.LookupEnv(env); ok {
+					rawValue = &value
+					break
+				}
 			}
 		}
 

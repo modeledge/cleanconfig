@@ -2,6 +2,7 @@ package cleanconfig
 
 import (
 	"bytes"
+	"cleanconfig/example/simple_secret"
 	"errors"
 	"fmt"
 	"io"
@@ -313,7 +314,7 @@ func TestReadEnvVars(t *testing.T) {
 			}
 			defer os.Clearenv()
 
-			if err := readEnvVars(tt.cfg, false); (err != nil) != tt.wantErr {
+			if err := readEnvVars(tt.cfg, false, nil); (err != nil) != tt.wantErr {
 				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
 			}
 			if !reflect.DeepEqual(tt.cfg, tt.want) {
@@ -374,7 +375,7 @@ func TestReadEnvVarsURL(t *testing.T) {
 			}
 			defer os.Clearenv()
 
-			if err := readEnvVars(tt.cfg, false); (err != nil) != tt.wantErr {
+			if err := readEnvVars(tt.cfg, false, nil); (err != nil) != tt.wantErr {
 				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
 			}
 			if !reflect.DeepEqual(tt.cfg, tt.want) {
@@ -425,7 +426,7 @@ func TestReadEnvVarsTime(t *testing.T) {
 			}
 			defer os.Clearenv()
 
-			if err := readEnvVars(tt.cfg, false); (err != nil) != tt.wantErr {
+			if err := readEnvVars(tt.cfg, false, nil); (err != nil) != tt.wantErr {
 				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
 			}
 			if !reflect.DeepEqual(tt.cfg, tt.want) {
@@ -467,7 +468,7 @@ func TestReadEnvVarsWithPrefix(t *testing.T) {
 	}
 
 	var cfg Config
-	if err := readEnvVars(&cfg, false); err != nil {
+	if err := readEnvVars(&cfg, false, nil); err != nil {
 		t.Fatal("failed to read env vars", err)
 	}
 
@@ -554,7 +555,7 @@ func TestReadUpdateFunctions(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if err := readEnvVars(tt.cfg, false); (err != nil) != tt.wantErr {
+			if err := readEnvVars(tt.cfg, false, nil); (err != nil) != tt.wantErr {
 				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
 			}
 			if !reflect.DeepEqual(tt.cfg, tt.want) {
@@ -1490,6 +1491,67 @@ two = 2`),
 			var err error
 			if err := ParseTOML(tt.r, &cfg); (err != nil) != tt.wantErr {
 				t.Errorf("ParseTOML() error = %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && !reflect.DeepEqual(&cfg, tt.want) {
+				t.Errorf("wrong data %v, want %v", &cfg, tt.want)
+			}
+		})
+	}
+}
+
+func TestReadConfigWithSecretManager(t *testing.T) {
+	type config struct {
+		Number int    `yaml:"number" env:"TEST_NUMBER" env-default:"1"`
+		Secret string `yaml:"secret" env:"TEST_SECRET" secret:"MY_SECRET"`
+	}
+
+	tests := []struct {
+		name         string
+		file         string
+		ext          string
+		secretValues map[string]string
+		want         *config
+		wantErr      bool
+	}{
+		{
+			name: "yaml_with_secret",
+			file: `
+number: 2
+secret: default_secret
+`,
+			ext: "yaml",
+			secretValues: map[string]string{
+				"MY_SECRET": "secret_value",
+			},
+			want: &config{
+				Number: 2,
+				Secret: "secret_value",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile, err := ioutil.TempFile(os.TempDir(), fmt.Sprintf("*.%s", tt.ext))
+			if err != nil {
+				t.Fatal("cannot create temporary file:", err)
+			}
+			defer os.Remove(tmpFile.Name())
+
+			text := []byte(tt.file)
+			if _, err = tmpFile.Write(text); err != nil {
+				t.Fatal("failed to write to temporary file:", err)
+			}
+
+			secretManager := simple_secret.NewFixtureSecrets()
+			for k, v := range tt.secretValues {
+				secretManager.SetSecret(k, v)
+			}
+
+			var cfg config
+			if err = ReadConfigWithSecretManager(tmpFile.Name(), secretManager, &cfg); (err != nil) != tt.wantErr {
+				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
 			}
 			if err == nil && !reflect.DeepEqual(&cfg, tt.want) {
 				t.Errorf("wrong data %v, want %v", &cfg, tt.want)
