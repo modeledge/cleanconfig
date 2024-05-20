@@ -2,7 +2,7 @@
 
 ## License
 
-This project is based on [Original Project Name](link-to-original-project) and is licensed under the MIT License. See the [LICENSE](./LICENSE) file for more information.
+This project is based on [ilyakaznacheev/cleanenv](https://github.com/ilyakaznacheev/cleanenv) and is licensed under the MIT License. See the [LICENSE](./LICENSE) file for more information.
 
 ## Description
 
