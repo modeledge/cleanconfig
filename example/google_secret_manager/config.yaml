@@ -1,0 +1,6 @@
+app:
+  environment: DEV
+  name: Example
+  contact_email: ex@ample.co
+  backend_url: https://example.co
+  frontend_url: http://localhost:3000
