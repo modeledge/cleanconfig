@@ -1559,3 +1559,64 @@ secret: default_secret
 		})
 	}
 }
+
+func TestReadConfigWithSecretPrefix(t *testing.T) {
+	type config struct {
+		Number int    `yaml:"number" env:"TEST_NUMBER" env-default:"1"`
+		Secret string `yaml:"secret" env:"TEST_SECRET" secret:"SECRET_KEY" secret-prefix:"PREFIX_"`
+	}
+
+	tests := []struct {
+		name         string
+		file         string
+		ext          string
+		secretValues map[string]string
+		want         *config
+		wantErr      bool
+	}{
+		{
+			name: "yaml_with_secret_prefix",
+			file: `
+number: 2
+secret: default_secret
+`,
+			ext: "yaml",
+			secretValues: map[string]string{
+				"PREFIX_SECRET_KEY": "prefixed_secret_value",
+			},
+			want: &config{
+				Number: 2,
+				Secret: "prefixed_secret_value",
+			},
+			wantErr: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			tmpFile, err := ioutil.TempFile(os.TempDir(), fmt.Sprintf("*.%s", tt.ext))
+			if err != nil {
+				t.Fatal("cannot create temporary file:", err)
+			}
+			defer os.Remove(tmpFile.Name())
+
+			text := []byte(tt.file)
+			if _, err = tmpFile.Write(text); err != nil {
+				t.Fatal("failed to write to temporary file:", err)
+			}
+
+			secretManager := simple_secret.NewFixtureSecrets()
+			for k, v := range tt.secretValues {
+				secretManager.SetSecret(k, v)
+			}
+
+			var cfg config
+			if err = ReadConfigWithSecretManager(tmpFile.Name(), secretManager, &cfg); (err != nil) != tt.wantErr {
+				t.Errorf("wrong error behavior %v, wantErr %v", err, tt.wantErr)
+			}
+			if err == nil && !reflect.DeepEqual(&cfg, tt.want) {
+				t.Errorf("wrong data %v, want %v", &cfg, tt.want)
+			}
+		})
+	}
+}

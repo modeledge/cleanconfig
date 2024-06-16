@@ -50,6 +50,10 @@ const (
 
 	// TagEnvPrefix аlag to specify prefix for structure fields
 	TagEnvPrefix = "env-prefix"
+
+	TagSecret = "secret"
+
+	TagSecretPrefix = "secret-prefix"
 )
 
 // Setter is an interface for a custom value setter.
@@ -269,16 +273,17 @@ func parseMap(valueType reflect.Type, value string, sep string, layout *string) 
 
 // structMeta is a structure metadata entity
 type structMeta struct {
-	envList     []string
-	fieldName   string
-	fieldValue  reflect.Value
-	defValue    *string
-	layout      *string
-	separator   string
-	description string
-	updatable   bool
-	required    bool
-	secretKey   string
+	envList      []string
+	fieldName    string
+	fieldValue   reflect.Value
+	defValue     *string
+	layout       *string
+	separator    string
+	description  string
+	updatable    bool
+	required     bool
+	secretKey    string
+	secretPrefix string
 }
 
 // isFieldValueZero determines if fieldValue empty or not
@@ -358,9 +363,10 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 			fType := typeInfo.Field(idx)
 
 			var (
-				defValue  *string
-				layout    *string
-				separator string
+				defValue     *string
+				layout       *string
+				separator    string
+				secretPrefix string
 			)
 
 			// process nested structure (except of supported ones)
@@ -401,6 +407,11 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 
 			_, required := fType.Tag.Lookup(TagEnvRequired)
 
+			// Handle secret-prefix tag
+			if sp, ok := fType.Tag.Lookup(TagSecretPrefix); ok {
+				secretPrefix = sp
+			}
+
 			envList := make([]string, 0)
 
 			if envs, ok := fType.Tag.Lookup(TagEnv); ok && len(envs) != 0 {
@@ -412,19 +423,20 @@ func readStructMetadata(cfgRoot interface{}) ([]structMeta, error) {
 				}
 			}
 
-			secretKey := fType.Tag.Get("secret")
+			secretKey := fType.Tag.Get(TagSecret)
 
 			metas = append(metas, structMeta{
-				envList:     envList,
-				fieldName:   s.Type().Field(idx).Name,
-				fieldValue:  s.Field(idx),
-				defValue:    defValue,
-				layout:      layout,
-				separator:   separator,
-				description: fType.Tag.Get(TagEnvDescription),
-				updatable:   upd,
-				required:    required,
-				secretKey:   secretKey,
+				envList:      envList,
+				fieldName:    s.Type().Field(idx).Name,
+				fieldValue:   s.Field(idx),
+				defValue:     defValue,
+				layout:       layout,
+				separator:    separator,
+				description:  fType.Tag.Get(TagEnvDescription),
+				updatable:    upd,
+				required:     required,
+				secretKey:    secretKey,
+				secretPrefix: secretPrefix,
 			})
 		}
 
@@ -456,8 +468,12 @@ func readEnvVars(cfg interface{}, update bool, secretManager SecretManager) erro
 
 		// Check if the secret key is provided
 		if meta.secretKey != "" {
+			secretKey := meta.secretKey
+			if meta.secretPrefix != "" {
+				secretKey = meta.secretPrefix + secretKey
+			}
 			if secretManager != nil {
-				secret, err := secretManager.GetSecret(meta.secretKey)
+				secret, err := secretManager.GetSecret(secretKey)
 				if err == nil {
 					rawValue = &secret
 				}
